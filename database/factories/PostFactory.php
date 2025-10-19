@@ -2,14 +2,14 @@
 
 namespace Database\Factories;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\User>
+ * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Post>
  */
-class UserFactory extends Factory
+class PostFactory extends Factory
 {
-
     /**
      * Define the model's default state.
      *
@@ -18,7 +18,8 @@ class UserFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => fake()->name(),
+            'user_id' => User::factory(),
+            'title' => fake()->sentence(),
         ];
     }
 }

@@ -1,61 +1,179 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Laravel N+1 Query Problem Demo
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Simple demo showing how to:
+✅ Profile a Laravel app using Laravel Telescope  
+✅ Identify and fix N+1 queries
 
-## About Laravel
+## Install & Enable Laravel Telescope
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+```bash
+composer require laravel/telescope --dev
+php artisan telescope:install
+php artisan migrate
+```
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Then start the server:
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+```bash
+php artisan serve
+```
 
-## Learning Laravel
+Visit:  
+👉 http://127.0.0.1:8000/telescope
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+You'll see Telescope's dashboard showing queries, requests, exceptions, etc.
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+---
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Create a Demo with an N+1 Problem
 
-## Laravel Sponsors
+### Create Models and Relationships:
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+php artisan make:model User -m
+php artisan make:model Post -m
+```
 
-### Premium Partners
+Update migration file same as this: `2025_10_19_101815_create_users_table.php`  
+and `2025_10_19_101854_create_posts_table.php`
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+Run migrations:
 
-## Contributing
+```bash
+php artisan migrate
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### Add Relationships in Models
 
-## Code of Conduct
+**app/Models/User.php**
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```php
+public function posts()
+{
+    return $this->hasMany(Post::class);
+}
+```
 
-## Security Vulnerabilities
+**app/Models/Post.php**
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```php
+public function user()
+{
+    return $this->belongsTo(User::class);
+}
+```
 
-## License
+### Create factory files to seed fake data in database:
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+- `PostFactory.php`
+- `UserFactory.php`
+
+Use tinker to run seed data:
+
+```bash
+php artisan tinker
+User::factory()->hasPosts(5)->count(3)->create();
+exit
+```
+
+---
+
+## Create Controller with N+1 Problem
+
+```bash
+php artisan make:controller PostController
+```
+
+**app/Http/Controllers/PostController.php**
+
+```php
+use App\Models\Post;
+
+class PostController extends Controller
+{
+    public function index()
+    {
+        // ❌ N+1 Query Problem
+        $posts = Post::all(); // no eager load
+        foreach ($posts as $post) {
+            $post->user->name; // triggers a query for each post
+        }
+
+        return view('posts.index', compact('posts'));
+    }
+}
+```
+
+**routes/web.php**
+
+```php
+Route::get('/posts', [PostController::class, 'index']);
+```
+
+And also create `resources/views/posts/index.blade.php` to display posts
+
+### Test the N+1 Problem
+
+Now visit:  
+http://127.0.0.1:8000/posts
+
+And then observe:  
+http://127.0.0.1:8000/telescope/queries
+
+Below queries will be visible:
+
+```
+select * from `users` where `users`.`id` = 3 limit 1	0.16ms	6m ago	
+select * from `users` where `users`.`id` = 3 limit 1	0.17ms	6m ago	
+select * from `users` where `users`.`id` = 3 limit 1	0.18ms	6m ago	
+select * from `users` where `users`.`id` = 3 limit 1	0.17ms	6m ago	
+select * from `users` where `users`.`id` = 3 limit 1	0.16ms	6m ago	
+select * from `users` where `users`.`id` = 2 limit 1	0.18ms	6m ago	
+select * from `users` where `users`.`id` = 2 limit 1	0.29ms	6m ago	
+select * from `users` where `users`.`id` = 2 limit 1	0.20ms	6m ago	
+select * from `users` where `users`.`id` = 2 limit 1	0.18ms	6m ago	
+select * from `users` where `users`.`id` = 2 limit 1	0.21ms	6m ago	
+select * from `users` where `users`.`id` = 1 limit 1	0.17ms	6m ago	
+select * from `users` where `users`.`id` = 1 limit 1	0.18ms	6m ago	
+select * from `users` where `users`.`id` = 1 limit 1	0.25ms	6m ago	
+select * from `users` where `users`.`id` = 1 limit 1	0.31ms	6m ago	
+select * from `users` where `users`.`id` = 1 limit 1	0.60ms	6m ago	
+select * from `posts`
+```
+
+**That's your N+1 problem!**
+
+---
+
+## Fix It Using Eager Loading
+
+Update your controller:
+
+```php
+public function index()
+{
+    // ✅ Fixed using eager loading
+    $posts = Post::with('user')->get();
+
+    foreach ($posts as $post) {
+        $post->user->name; // No additional query now
+    }
+
+    return view('posts.index', compact('posts'));
+}
+```
+
+Now visit again:  
+http://127.0.0.1:8000/posts
+
+And then observe:  
+http://127.0.0.1:8000/telescope/queries
+
+Below queries will be visible:
+
+```
+select * from `users` where `users`.`id` in (1, 2, 3)	0.38ms	7m ago	
+select * from `posts`
+```
+
+**Problem fixed 🎯**
